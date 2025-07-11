@@ -31,4 +31,16 @@ router.get("/all", authenticateToken, isAdmin, getAllUsers); // Get all users
 router.put("/:id/role", authenticateToken, isAdmin, updateUserRole); // Update user role
 router.delete("/:id", authenticateToken, isAdmin, deleteUser); // Delete user
 
+// Logout Route
+router.post("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Session destroy error:", err);
+      return res.status(500).json({ message: "Failed to logout" });
+    }
+    res.clearCookie("sid"); // clear session cookie
+    res.json({ message: "Logged out successfully" });
+  });
+});
+
 module.exports = router;
