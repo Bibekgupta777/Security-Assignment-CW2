@@ -45,23 +45,25 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.set("trust proxy", 1); // if behind proxy (e.g. Heroku)
 
-// Session middleware with corrected MongoDB URI key
+// Session middleware with rolling session expiration refresh
 app.use(
   session({
+    name: "sid", // custom cookie name
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-      mongoUrl: process.env.MONGO_DB_URI,  // <-- Corrected here
+      mongoUrl: process.env.MONGO_DB_URI,
       collectionName: "sessions",
-      ttl: 60 * 60 * 24, // 1 day session expiration
+      ttl: 60 * 60 * 24, // 1 day in seconds (session store expiration)
     }),
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 1000, // 1 hour cookie expiration
-      sameSite: "lax",
+      sameSite: "strict",
     },
+    rolling: true, // refresh cookie expiration on each response
   })
 );
 
