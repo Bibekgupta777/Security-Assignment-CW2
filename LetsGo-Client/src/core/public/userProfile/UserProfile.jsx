@@ -26,6 +26,9 @@ import {
 import { useEffect, useState } from "react";
 
 const LOCAL_STORAGE_USER_KEY = "profile-edited-user";
+const REQUIRED_FIELDS = ["name", "email"];
+const PROFILE_SAVE_MESSAGE = "Profile updated and saved locally!";
+
 
 const UserProfile = () => {
   const [user, setUser] = useState(null);
@@ -156,8 +159,9 @@ const getStatusBadgeClass = (status) => {
     setEditError(null);
     setEditSuccess(null);
 
-    if (!editForm.name.trim() || !editForm.email.trim()) {
-      setEditError("Name and Email are required.");
+    if (REQUIRED_FIELDS.some((field) => !editForm[field].trim())) {
+  setEditError("Name and Email are required.");
+
       setEditLoading(false);
       return;
     }
