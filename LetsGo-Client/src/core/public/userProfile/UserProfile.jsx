@@ -344,15 +344,17 @@ const getStatusBadgeClass = (status) => {
                         <div className="flex gap-2 lg:flex-col justify-end">
                           <Button
                             variant="outline"
-                            size="sm"
-                            onClick={() => {
+                                size="sm"
+                                  title="View more information"
+                                      onClick={() => {
                               setSelectedBooking(booking);
-                              setIsDetailsModalOpen(true);
-                            }}
-                          >
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </Button>
+                                    setIsDetailsModalOpen(true);
+                                         }}
+                                              >
+                                         <Eye className="w-4 h-4 mr-2" />
+                                           View Details
+                                            </Button>
+
                           {booking.booking_status !== "cancelled" && (
                             <Button
                               variant="destructive"
