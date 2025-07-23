@@ -109,18 +109,18 @@ const UserProfile = () => {
     }
   };
 
-  const getStatusBadgeClass = (status) => {
-    switch (status.toLowerCase()) {
-      case "confirmed":
-        return "bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm";
-      case "pending":
-        return "bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm";
-      case "cancelled":
-        return "bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm";
-      default:
-        return "bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm";
-    }
-  };
+ const statusStyles = {
+  confirmed: "bg-green-100 text-green-800",
+  pending: "bg-yellow-100 text-yellow-800",
+  cancelled: "bg-red-100 text-red-800",
+  default: "bg-gray-100 text-gray-800",
+};
+
+const getStatusBadgeClass = (status) => {
+  const base = "px-3 py-1 rounded-full text-sm";
+  return `${statusStyles[status.toLowerCase()] || statusStyles.default} ${base}`;
+};
+
 
   // Filter bookings based on active tab
   const filteredBookings = bookings.filter((booking) => {
