@@ -1,25 +1,24 @@
 import React, { useState } from "react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as yup from "yup";
 import wallpaper from "/Logo/busBg.jpg";
 import star from "/Logo/star.png";
 import useLogin from "../../../hooks/useLogin";
 import Navbar from "../../../components/Navbar";
+import { toast } from "react-toastify";
 
 const schema = yup
   .object({
-    email: yup
-      .string()
-      .required("Email is required")
-      .email("Enter a valid email address"),
+    email: yup.string().required("Email is required").email("Enter a valid email address"),
     password: yup.string().required("Password is required"),
   })
   .required();
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -27,19 +26,30 @@ const LoginPage = () => {
     formState: { errors },
   } = useForm({ resolver: yupResolver(schema) });
 
-  const { login } = useLogin();
-  const submit = async (data) => {
-    await login(data);
-  };
+  const { login, loading } = useLogin();
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
 
+  const submit = async (data) => {
+    try {
+      const res = await login(data); // API call
+      if (res.success) {
+        toast.success("OTP sent to your email!");
+        // Navigate to OTP page with email as state
+        navigate("/verify-otp", { state: { email: data.email } });
+      } else {
+        toast.error(res.message || "Login failed");
+      }
+    } catch (error) {
+      toast.error("Something went wrong!");
+    }
+  };
+
   return (
     <>
       <Navbar />
-
       <div className="flex w-full h-screen mx-auto max-w-[1300px] p-2">
         <div
           className="lg:w-7/12 bg-cover bg-center rounded-l-2xl"
@@ -104,13 +114,14 @@ const LoginPage = () => {
             <button
               className="mt-10 md:w-7/12 w-11/12 rounded-md h-12 bg-green-600 text-white text-lg font-medium hover:bg-[#403a4f] transition-all"
               type="submit"
+              disabled={loading}
             >
-              Login
+              {loading ? "Sending OTP..." : "Login"}
             </button>
 
             <div className="md:w-6/12 w-11/12 flex text-sm justify-center pt-4">
               <p className="text-gray-500">Not registered yet?</p>
-              <Link to="/Signup">
+              <Link to="/signup">
                 <p className="text-green-600 ml-1 font-medium cursor-pointer hover:underline">
                   Create an account
                 </p>
