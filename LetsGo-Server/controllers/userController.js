@@ -49,7 +49,7 @@ const isPasswordReused = async (newPassword, passwordHistory) => {
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 15 * 60 * 1000; // 15 minutes in ms
 
-// User Sign-Up
+// ✅ User Sign-Up
 const signUp = async (req, res) => {
   try {
     const { name, email, password, avatar, phone, address } = req.body;
@@ -109,7 +109,7 @@ const signUp = async (req, res) => {
   }
 };
 
-// Upload image handler
+// ✅ Upload image handler
 const uploadImage = asyncHandler(async (req, res, next) => {
   if (!req.file) {
     return res.status(400).send({ message: "Please upload a file" });
@@ -120,7 +120,7 @@ const uploadImage = asyncHandler(async (req, res, next) => {
   });
 });
 
-// User Sign-In with brute-force prevention
+// ✅ User Sign-In with secure session & brute-force prevention
 const signIn = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -140,56 +140,15 @@ const signIn = async (req, res) => {
 
     // Verify password
     const isMatch = await bcrypt.compare(password, existingUser.password);
-    if (isMatch) {
-      // Reset failed login attempts and lock
-      existingUser.failedLoginAttempts = 0;
-      existingUser.lockUntil = null;
-      await existingUser.save();
-
-      // Optional password expiry check (example: 90 days)
-      if (existingUser.passwordChangedAt) {
-        const expiryDays = 90;
-        const expiryDate = new Date(existingUser.passwordChangedAt);
-        expiryDate.setDate(expiryDate.getDate() + expiryDays);
-        if (expiryDate < new Date()) {
-          return res.status(403).json({
-            message: "Your password has expired. Please reset your password.",
-            passwordExpired: true,
-          });
-        }
-      }
-
-      // Generate JWT token
-      const token = jwt.sign(
-        {
-          id: existingUser._id,
-          email: existingUser.email,
-          role: existingUser.role,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "30d" }
-      );
-
-      return res.status(200).json({
-        message: "Login successful",
-        user: {
-          id: existingUser._id,
-          role: existingUser.role,
-          token,
-        },
-      });
-    } else {
-      // Incorrect password: increment failed attempts
+    if (!isMatch) {
       existingUser.failedLoginAttempts = (existingUser.failedLoginAttempts || 0) + 1;
 
-      // Lock account if max attempts reached
       if (existingUser.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS) {
         existingUser.lockUntil = new Date(Date.now() + LOCK_TIME);
       }
 
       await existingUser.save();
 
-      // Prepare message for user
       let msg = "Invalid Credentials";
       if (existingUser.lockUntil && existingUser.lockUntil > Date.now()) {
         const lockMinutes = Math.ceil((existingUser.lockUntil - Date.now()) / 60000);
@@ -200,22 +159,64 @@ const signIn = async (req, res) => {
           msg = `Invalid Credentials. You have ${attemptsLeft} attempt(s) left before your account is locked.`;
         }
       }
-
       return res.status(400).json({ message: msg });
     }
+
+    // ✅ Reset failed login attempts and lock
+    existingUser.failedLoginAttempts = 0;
+    existingUser.lockUntil = null;
+    await existingUser.save();
+
+    // ✅ Password expiry check (90 days)
+    if (existingUser.passwordChangedAt) {
+      const expiryDays = 90;
+      const expiryDate = new Date(existingUser.passwordChangedAt);
+      expiryDate.setDate(expiryDate.getDate() + expiryDays);
+      if (expiryDate < new Date()) {
+        return res.status(403).json({
+          message: "Your password has expired. Please reset your password.",
+          passwordExpired: true,
+        });
+      }
+    }
+
+    // ✅ Regenerate session to prevent session fixation
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error("Session regeneration failed:", err);
+        return res.status(500).json({ message: "Login failed due to session error" });
+      }
+
+      // ✅ Store minimal user info in session
+      req.session.user = {
+        id: existingUser._id,
+        email: existingUser.email,
+        role: existingUser.role,
+      };
+
+      res.status(200).json({
+        message: "Login successful",
+        user: {
+          id: existingUser._id,
+          email: existingUser.email,
+          role: existingUser.role,
+        },
+        sessionId: req.session.id,
+      });
+    });
   } catch (error) {
-    res.status(500).json({ error: "Internal Server Error", details: error });
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 };
 
-// Get user info by ID
+// ✅ Get user info by ID
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
     const data = await User.findById(id).select("-password");
     if (!data) return res.status(404).json({ message: "User not found" });
 
-    // Decrypt sensitive fields before sending
     const userObj = data.toObject();
     userObj.phone = decrypt(userObj.phone);
     userObj.address = decrypt(userObj.address);
@@ -226,12 +227,11 @@ const getUserById = async (req, res) => {
   }
 };
 
-// Get all users (admin only)
+// ✅ Get all users (admin only)
 const getAllUsers = async (req, res) => {
   try {
     const users = await User.find().select("-password");
 
-    // Decrypt sensitive fields for each user
     const decryptedUsers = users.map((user) => {
       const userObj = user.toObject();
       userObj.phone = decrypt(userObj.phone);
@@ -252,7 +252,7 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// Update user role (admin only)
+// ✅ Update user role (admin only)
 const updateUserRole = async (req, res) => {
   try {
     const { id } = req.params;
@@ -292,7 +292,7 @@ const updateUserRole = async (req, res) => {
   }
 };
 
-// Delete user (admin only)
+// ✅ Delete user (admin only)
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -319,7 +319,7 @@ const deleteUser = async (req, res) => {
   }
 };
 
-// Forgot Password - send reset link
+// ✅ Forgot Password - send reset link
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -332,13 +332,12 @@ const forgotPassword = async (req, res) => {
       });
     }
 
-    // Generate reset token (15m expiry)
     const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "15m",
     });
 
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 min
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
     const transporter = nodemailer.createTransport({
@@ -379,7 +378,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// Reset Password
+// ✅ Reset Password
 const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -398,13 +397,11 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Validate password complexity
     const passwordValidation = validatePassword(newPassword);
     if (!passwordValidation.valid) {
       return res.status(400).json({ message: passwordValidation.message });
     }
 
-    // Check password reuse
     const reused = await isPasswordReused(newPassword, user.passwordHistory);
     if (reused) {
       return res.status(400).json({
@@ -413,16 +410,13 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password history (keep last 5)
     user.passwordHistory.unshift(user.password);
     if (user.passwordHistory.length > 5) {
       user.passwordHistory.pop();
     }
 
-    // Update password and clear reset tokens
     user.password = hashedPassword;
     user.passwordChangedAt = new Date();
     user.resetPasswordToken = undefined;
@@ -442,7 +436,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-// Update user profile
+// ✅ Update user profile
 const updateUserProfile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -456,7 +450,6 @@ const updateUserProfile = async (req, res) => {
       });
     }
 
-    // Check authorization
     if (req.user.id !== id && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
@@ -464,7 +457,6 @@ const updateUserProfile = async (req, res) => {
       });
     }
 
-    // Encrypt phone and address if provided
     const encryptedPhone = phone ? encrypt(phone) : user.phone;
     const encryptedAddress = address ? encrypt(address) : user.address;
 
@@ -479,7 +471,6 @@ const updateUserProfile = async (req, res) => {
       { new: true, runValidators: true }
     ).select("-password");
 
-    // Decrypt before sending response
     const userObj = updatedUser.toObject();
     userObj.phone = decrypt(userObj.phone);
     userObj.address = decrypt(userObj.address);
