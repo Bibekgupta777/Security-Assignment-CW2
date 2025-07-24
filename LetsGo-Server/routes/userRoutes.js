@@ -27,19 +27,24 @@ router.post("/uploadImage", uploadUserAvatar, uploadImage);
 router.put("/:id", authenticateToken, updateUserProfile);
 
 // Admin Routes
-router.get("/all", authenticateToken, isAdmin, getAllUsers); // Get all users
-router.put("/:id/role", authenticateToken, isAdmin, updateUserRole); // Update user role
-router.delete("/:id", authenticateToken, isAdmin, deleteUser); // Delete user
+router.get("/all", authenticateToken, isAdmin, getAllUsers);
+router.put("/:id/role", authenticateToken, isAdmin, updateUserRole);
+router.delete("/:id", authenticateToken, isAdmin, deleteUser);
 
-// Logout Route
+// Logout Route - destroys session and clears cookie
 router.post("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error("Session destroy error:", err);
       return res.status(500).json({ message: "Failed to logout" });
     }
-    res.clearCookie("sid"); // clear session cookie
-    res.json({ message: "Logged out successfully" });
+    res.clearCookie("sid", {
+      httpOnly: true,
+      secure: true,       // must be true for sameSite:none cookies over HTTPS
+      sameSite: "none",   // same as cookie setting in session config
+      path: "/",
+    });
+    res.status(200).json({ message: "Logged out successfully" });
   });
 });
 
