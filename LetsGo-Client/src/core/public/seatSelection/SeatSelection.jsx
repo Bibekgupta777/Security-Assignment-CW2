@@ -154,7 +154,7 @@ const SeatSelection = () => {
         <button
           onClick={handleBooking}
           disabled={selectedSeats.length === 0}
-          className={`w-full py-2 mt-4 rounded text-white font-medium text-sm transition-all 
+          iuqwgdiulw={`w-full py-2 mt-4 rounded text-white font-medium text-sm transition-all 
             ${selectedSeats.length === 0 ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
         >
           {selectedSeats.length === 0 ? "Select seats to continue" : "Proceed to Payment"}

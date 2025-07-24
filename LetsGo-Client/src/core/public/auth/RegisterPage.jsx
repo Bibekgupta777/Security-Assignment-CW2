@@ -9,17 +9,53 @@ import loadingGif from "/Logo/buttonLoading.gif";
 import star from "/Logo/star.png";
 import Navbar from "../../../components/Navbar";
 
-// Yup schema for backend validation consistency
+// ✅ Custom function to prevent NoSQL injection-like patterns
+const noNoSQLInjection = (value) => {
+  const blacklist = ["$", "{", "}", "=", "==", "==="];
+  const nosqlOperators = [
+    "$ne",
+    "$eq",
+    "$gt",
+    "$gte",
+    "$lt",
+    "$lte",
+    "$regex",
+    "$where",
+  ];
+  return (
+    !blacklist.some((char) => value.includes(char)) &&
+    !nosqlOperators.some((op) => value.toLowerCase().includes(op))
+  );
+};
+
+// ✅ Updated Yup schema for backend validation consistency
 const schema = yup
   .object({
     name: yup
       .string()
       .required("Name is required")
-      .min(3, "Name must be at least 3 characters"),
+      .min(4, "Name must be at least 4 characters")
+      .max(50, "Name must be at most 50 characters")
+      .matches(/^[a-zA-Z\s]+$/, "Name can only contain letters and spaces")
+      .test(
+        "nosql-injection",
+        "Invalid characters detected",
+        (value) => noNoSQLInjection(value)
+      ),
     email: yup
       .string()
       .required("Email is required")
-      .email("Enter a valid email address"),
+      .email("Enter a valid email address")
+      .max(100, "Email is too long")
+      .matches(
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+        "Enter a valid email address"
+      )
+      .test(
+        "nosql-injection",
+        "Invalid characters detected",
+        (value) => noNoSQLInjection(value)
+      ),
     password: yup
       .string()
       .required("Password is required")
@@ -110,6 +146,7 @@ const RegisterPage = () => {
               <h1 className="text-3xl font-medium mt-6">Create Your Account</h1>
             </div>
 
+            {/* Full Name */}
             <div className="md:w-7/12 w-11/12 flex flex-col justify-center mt-20">
               <h1>Full Name</h1>
               <div className="h-12 w-full border-solid border rounded-md border-gray-300 flex items-center pl-4 pr-2">
@@ -125,6 +162,7 @@ const RegisterPage = () => {
               )}
             </div>
 
+            {/* Email */}
             <div className="md:w-7/12 w-11/12 flex flex-col justify-center mt-6">
               <h1>Email</h1>
               <div className="h-12 w-full border-solid border rounded-md border-gray-300 flex items-center pl-4 pr-2">
@@ -140,6 +178,7 @@ const RegisterPage = () => {
               )}
             </div>
 
+            {/* Password */}
             <div className="md:w-7/12 w-11/12 flex flex-col justify-center mt-6">
               <h1>Password</h1>
               <div className="h-12 w-full border-solid border rounded-md border-gray-300 flex items-center pl-4 pr-2 relative">
@@ -161,7 +200,7 @@ const RegisterPage = () => {
                 <h6 className="text-red-500 text-xs mt-1">{errors.password?.message}</h6>
               )}
 
-              {/* Improved Password requirements list */}
+              {/* Password requirements list */}
               <div className="mt-3 mb-2 text-sm p-3 rounded-md bg-gray-50 border border-gray-200 max-w-md">
                 <h4 className="font-semibold mb-2 text-gray-700">Password Requirements:</h4>
                 <ul className="space-y-2">
@@ -203,7 +242,9 @@ const RegisterPage = () => {
                   className={`h-2 rounded transition-all duration-500 ease-in-out ${
                     strengthColors[passwordStrength]
                   }`}
-                  style={{ width: `${(passwordStrength / passwordRequirements.length) * 100}%` }}
+                  style={{
+                    width: `${(passwordStrength / passwordRequirements.length) * 100}%`,
+                  }}
                 ></div>
               </div>
               <p
