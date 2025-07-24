@@ -1,19 +1,16 @@
 import axios from "axios";
 import React, { createContext, useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
-import { authActions } from "../store/auth"; // Assuming you're using Redux for authentication
+import { authActions } from "../store/auth";
 
-// Create the context
 export const UserContext = createContext();
 
-// Create the provider component
 export const UserProvider = ({ children }) => {
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const dispatch = useDispatch(); // We need dispatch to call logout action
+  const dispatch = useDispatch();
 
-  // Access token and user ID from localStorage
   const authenticateToken = localStorage.getItem("token");
   const userId = localStorage.getItem("id");
 
@@ -22,7 +19,7 @@ export const UserProvider = ({ children }) => {
       if (userId) {
         try {
           const response = await axios.get(
-            `/api/user/get-user-by-id/${userId}` // Adjust endpoint
+            `/api/user/get-user-by-id/${userId}`
           );
           setUserInfo(response.data);
         } catch (error) {
@@ -38,14 +35,31 @@ export const UserProvider = ({ children }) => {
     fetchUserInfo();
   }, [userId, authenticateToken]);
 
-  // Logout function to be used across components
-  const logout = () => {
-    dispatch(authActions.logout()); // Clear auth state in Redux
-    localStorage.removeItem("id");
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    setUserInfo(null); // Clear the user info from context
-    window.location.reload(); // Optionally reload to reset the app state
+  // Updated logout function
+  const logout = async () => {
+    try {
+      // Call backend logout to destroy session and clear cookies
+      await axios.post(
+        "/api/user/logout",
+        {},
+        {
+          withCredentials: true, // Important: send cookies
+        }
+      );
+
+      // Clear Redux auth state and localStorage
+      dispatch(authActions.logout());
+      localStorage.removeItem("id");
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      setUserInfo(null);
+
+      // Redirect or reload app as needed
+      window.location.href = "/login"; // redirect to login page
+    } catch (error) {
+      console.error("Logout failed:", error);
+      alert("Logout failed, please try again.");
+    }
   };
 
   return (
