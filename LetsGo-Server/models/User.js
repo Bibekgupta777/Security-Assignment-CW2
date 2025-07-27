@@ -21,11 +21,11 @@ const userSchema = mongoose.Schema(
     },
     phone: {
       type: String,
-      trim: true, // will store encrypted string
+      trim: true,
     },
     address: {
       type: String,
-      trim: true, // will store encrypted string
+      trim: true,
     },
     role: {
       type: String,
@@ -45,6 +45,16 @@ const userSchema = mongoose.Schema(
       default: null,
     },
     passwordChangedAt: Date,
+
+    // ✅ Added for OTP verification
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    otp: {
+      code: String,
+      expiresAt: Date,
+    },
   },
   { timestamps: true }
 );
