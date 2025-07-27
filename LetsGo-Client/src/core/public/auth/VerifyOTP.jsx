@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useDispatch } from "react-redux"; // Add this import
 import { toast } from "react-toastify";
-import star from "/Logo/star.png"; // Adjust path as needed
-import Navbar from "../../../components/Navbar"; // Adjust path as needed
-import { authActions } from "../../../store/authSlice"; // Adjust path to your Redux slice
+import star from "/Logo/star.png";
+import Navbar from "../../../components/Navbar";
+import useLogin from "../../../hooks/useLogin"; // Import useLogin for handleOTPSuccess
 
 const VerifyOTP = () => {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -12,12 +11,12 @@ const VerifyOTP = () => {
   const [resendLoading, setResendLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes countdown
   const [canResend, setCanResend] = useState(false);
-  
+
   const location = useLocation();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
   const inputRefs = useRef([]);
-  
+  const { handleOTPSuccess } = useLogin();
+
   const email = location.state?.email;
 
   // Redirect if no email is provided
@@ -55,7 +54,6 @@ const VerifyOTP = () => {
     newOtp[index] = value;
     setOtp(newOtp);
 
-    // Auto-focus next input
     if (value !== "" && index < 5) {
       inputRefs.current[index + 1].focus();
     }
@@ -73,7 +71,7 @@ const VerifyOTP = () => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData("text");
     const pastedOtp = pastedData.replace(/\D/g, "").slice(0, 6).split("");
-    
+
     const newOtp = [...otp];
     pastedOtp.forEach((digit, index) => {
       if (index < 6) {
@@ -82,26 +80,24 @@ const VerifyOTP = () => {
     });
     setOtp(newOtp);
 
-    // Focus on the next empty input or last input
-    const nextEmptyIndex = newOtp.findIndex(digit => digit === "");
+    const nextEmptyIndex = newOtp.findIndex((digit) => digit === "");
     const focusIndex = nextEmptyIndex !== -1 ? nextEmptyIndex : 5;
     inputRefs.current[focusIndex].focus();
   };
 
-  // Verify OTP
+  // Verify OTP and update login state
   const handleVerifyOtp = async () => {
     const otpCode = otp.join("");
-    
+
     if (otpCode.length !== 6) {
       toast.error("Please enter complete OTP");
       return;
     }
 
     setLoading(true);
-    
+
     try {
-      // 🔥 Updated API endpoint to match your backend
-      const response = await fetch("/api/users/verify-otp", {
+      const response = await fetch("/api/user/verify-otp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -113,27 +109,27 @@ const VerifyOTP = () => {
       });
 
       const data = await response.json();
+      console.log("OTP verification response:", data);
 
-      if (response.ok && data.user && data.user.token) {
-        // 🔥 Save user data and update Redux state
-        localStorage.setItem("token", data.user.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        
-        // Update Redux state
-        dispatch(authActions.login());
-        dispatch(authActions.changeRole(data.user.role));
-        
-        toast.success("Login successful!");
-        
-        // Navigate based on role
-        if (data.user.role === "admin") {
-          navigate("/admin/dashboard");
-        } else {
-          navigate("/"); // or "/dashboard"
+      if (response.ok) {
+        toast.success(data.message || "OTP verified successfully");
+
+        if (data.user) {
+          // Save user info & token in localStorage
+          localStorage.setItem("id", data.user.id);
+          localStorage.setItem("token", data.user.token || "dummy-token");
+          localStorage.setItem("role", data.user.role || "user");
+
+          // Update app login state if handler exists
+          if (handleOTPSuccess) {
+            handleOTPSuccess(data.user);
+          }
         }
+
+        // Navigate to home page after success
+        setTimeout(() => navigate("/"), 500);
       } else {
         toast.error(data.message || "Invalid OTP");
-        // Clear OTP on error
         setOtp(["", "", "", "", "", ""]);
         inputRefs.current[0].focus();
       }
@@ -148,9 +144,9 @@ const VerifyOTP = () => {
   // Resend OTP
   const handleResendOtp = async () => {
     setResendLoading(true);
-    
+
     try {
-      const response = await fetch("/api/users/resend-otp", {
+      const response = await fetch("/api/user/resend-otp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -162,9 +158,9 @@ const VerifyOTP = () => {
 
       if (response.ok) {
         toast.success("New OTP sent to your email!");
-        setTimeLeft(300); // Reset timer
+        setTimeLeft(300);
         setCanResend(false);
-        setOtp(["", "", "", "", "", ""]); // Clear current OTP
+        setOtp(["", "", "", "", "", ""]);
         inputRefs.current[0].focus();
       } else {
         toast.error(data.message || "Failed to resend OTP");
@@ -210,10 +206,13 @@ const VerifyOTP = () => {
                   />
                 ))}
               </div>
-              
+
               <div className="text-center text-sm text-gray-600 mb-4">
                 {timeLeft > 0 ? (
-                  <p>Code expires in: <span className="font-medium text-red-500">{formatTime(timeLeft)}</span></p>
+                  <p>
+                    Code expires in:{" "}
+                    <span className="font-medium text-red-500">{formatTime(timeLeft)}</span>
+                  </p>
                 ) : (
                   <p className="text-red-500">OTP has expired</p>
                 )}
