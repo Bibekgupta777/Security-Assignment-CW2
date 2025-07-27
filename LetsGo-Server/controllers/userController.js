@@ -2,125 +2,40 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
-const asyncHandler = require("../middleware/async");
-const { encrypt, decrypt } = require("../utils/encryption");
+const fs = require("fs");
+const path = require("path");
 
-// Password validation function
-function validatePassword(password) {
-  const minLength = 8;
-  const maxLength = 20;
-  const uppercasePattern = /[A-Z]/;
-  const lowercasePattern = /[a-z]/;
-  const numberPattern = /[0-9]/;
-  const specialCharPattern = /[!@#$%^&*(),.?":{}|<>]/;
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCK_TIME = 30 * 60 * 1000;
 
-  if (password.length < minLength || password.length > maxLength) {
-    return {
-      valid: false,
-      message: `Password must be between ${minLength} and ${maxLength} characters long.`,
-    };
-  }
-  if (!uppercasePattern.test(password)) {
-    return { valid: false, message: "Password must include at least one uppercase letter." };
-  }
-  if (!lowercasePattern.test(password)) {
-    return { valid: false, message: "Password must include at least one lowercase letter." };
-  }
-  if (!numberPattern.test(password)) {
-    return { valid: false, message: "Password must include at least one number." };
-  }
-  if (!specialCharPattern.test(password)) {
-    return { valid: false, message: "Password must include at least one special character." };
-  }
-
-  return { valid: true };
-}
-
-// Check if new password was recently used
-const isPasswordReused = async (newPassword, passwordHistory) => {
-  for (const oldHashed of passwordHistory) {
-    const match = await bcrypt.compare(newPassword, oldHashed);
-    if (match) return true;
-  }
-  return false;
+const generateOtp = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Constants for brute-force prevention
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCK_TIME = 15 * 60 * 1000; // 15 minutes in ms
-
-// ✅ User Sign-Up
 const signUp = async (req, res) => {
   try {
-    const { name, email, password, avatar, phone, address } = req.body;
-
-    // Check if email exists
-    const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      return res.status(400).json({ message: "Email already exists" });
+    const { name, email, password } = req.body;
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
     }
 
-    // Validate password complexity
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ message: passwordValidation.message });
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Hash password
-    const hashedPass = await bcrypt.hash(password, 10);
-
-    // Create user with password history and lock fields initialized
-    const newUser = new User({
+    const user = new User({
       name,
       email,
-      password: hashedPass,
-      avatar,
-      phone: phone ? encrypt(phone) : undefined,
-      address: address ? encrypt(address) : undefined,
-      passwordHistory: [hashedPass], // initialize with current password
-      passwordChangedAt: new Date(),
-      failedLoginAttempts: 0,
-      lockUntil: null,
+      password: hashedPassword,
     });
 
-    const data = await newUser.save();
+    await user.save();
 
-    // Send welcome email
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Welcome to Lets Go",
-      html: `<h1>Your Registration has been completed</h1><p>Your user id is ${newUser.id}</p>`,
-    });
-
-    res.status(201).json({ message: "User saved successfully", data });
+    res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Internal Server Error", error });
+    res.status(500).json({ message: "Error signing up user", error });
   }
 };
 
-// ✅ Upload image handler
-const uploadImage = asyncHandler(async (req, res, next) => {
-  if (!req.file) {
-    return res.status(400).send({ message: "Please upload a file" });
-  }
-  res.status(200).json({
-    success: true,
-    data: req.file.filename,
-  });
-});
-
-// ✅ User Sign-In with secure session & brute-force prevention
 const signIn = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -130,7 +45,6 @@ const signIn = async (req, res) => {
       return res.status(400).json({ message: "Invalid Credentials" });
     }
 
-    // Check if account is locked
     if (existingUser.lockUntil && existingUser.lockUntil > Date.now()) {
       const lockMinutes = Math.ceil((existingUser.lockUntil - Date.now()) / 60000);
       return res.status(403).json({
@@ -138,56 +52,72 @@ const signIn = async (req, res) => {
       });
     }
 
-    // Verify password
     const isMatch = await bcrypt.compare(password, existingUser.password);
     if (!isMatch) {
       existingUser.failedLoginAttempts = (existingUser.failedLoginAttempts || 0) + 1;
-
       if (existingUser.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS) {
         existingUser.lockUntil = new Date(Date.now() + LOCK_TIME);
       }
-
       await existingUser.save();
 
       let msg = "Invalid Credentials";
       if (existingUser.lockUntil && existingUser.lockUntil > Date.now()) {
         const lockMinutes = Math.ceil((existingUser.lockUntil - Date.now()) / 60000);
-        msg = `Account locked due to too many failed login attempts. Try again in ${lockMinutes} minute(s).`;
+        msg = `Account locked. Try again in ${lockMinutes} minute(s).`;
       } else {
         const attemptsLeft = MAX_LOGIN_ATTEMPTS - existingUser.failedLoginAttempts;
         if (attemptsLeft > 0) {
-          msg = `Invalid Credentials. You have ${attemptsLeft} attempt(s) left before your account is locked.`;
+          msg = `Invalid Credentials. You have ${attemptsLeft} attempt(s) left.`;
         }
       }
       return res.status(400).json({ message: msg });
     }
 
-    // ✅ Reset failed login attempts and lock
     existingUser.failedLoginAttempts = 0;
     existingUser.lockUntil = null;
-    await existingUser.save();
 
-    // ✅ Password expiry check (90 days)
-    if (existingUser.passwordChangedAt) {
-      const expiryDays = 90;
-      const expiryDate = new Date(existingUser.passwordChangedAt);
-      expiryDate.setDate(expiryDate.getDate() + expiryDays);
-      if (expiryDate < new Date()) {
-        return res.status(403).json({
-          message: "Your password has expired. Please reset your password.",
-          passwordExpired: true,
-        });
-      }
+    if (!existingUser.isVerified) {
+      const otpCode = generateOtp();
+      const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+      existingUser.otp = { code: otpCode, expiresAt: otpExpiry };
+      await existingUser.save();
+
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: existingUser.email,
+        subject: "OTP Verification - Lets Go",
+        html: `<p>Your OTP is: <b>${otpCode}</b>. It will expire in 5 minutes.</p>`,
+      });
+
+      return res.status(200).json({
+        message: "OTP sent to your email",
+        otpRequired: true,
+        email: existingUser.email,
+      });
     }
 
-    // ✅ Regenerate session to prevent session fixation
+    // Generate JWT token here
+    const token = jwt.sign(
+      { id: existingUser._id, email: existingUser.email, role: existingUser.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     req.session.regenerate((err) => {
       if (err) {
-        console.error("Session regeneration failed:", err);
         return res.status(500).json({ message: "Login failed due to session error" });
       }
 
-      // ✅ Store minimal user info in session
       req.session.user = {
         id: existingUser._id,
         email: existingUser.email,
@@ -200,6 +130,7 @@ const signIn = async (req, res) => {
           id: existingUser._id,
           email: existingUser.email,
           role: existingUser.role,
+          token,  // <-- Add token here
         },
         sessionId: req.session.id,
       });
@@ -210,134 +141,108 @@ const signIn = async (req, res) => {
   }
 };
 
-// ✅ Get user info by ID
+const verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.otp && user.otp.code === otp && user.otp.expiresAt > Date.now()) {
+      user.isVerified = true;
+      user.otp = undefined;
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
+      await user.save();
+
+      // Generate JWT token here
+      const token = jwt.sign(
+        { id: user._id, email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      req.session.regenerate((err) => {
+        if (err) {
+          return res.status(500).json({ message: "Session error after OTP verification" });
+        }
+
+        req.session.user = {
+          id: user._id,
+          email: user.email,
+          role: user.role,
+        };
+
+        return res.status(200).json({
+          message: "OTP verified and login successful",
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            token,  // <-- Add token here
+          },
+          sessionId: req.session.id,
+        });
+      });
+    } else {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+  } catch (error) {
+    console.error("OTP verification error:", error);
+    res.status(500).json({ message: "Server error verifying OTP" });
+  }
+};
+
 const getUserById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const data = await User.findById(id).select("-password");
-    if (!data) return res.status(404).json({ message: "User not found" });
-
-    const userObj = data.toObject();
-    userObj.phone = decrypt(userObj.phone);
-    userObj.address = decrypt(userObj.address);
-
-    return res.status(200).json(userObj);
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json(user);
   } catch (error) {
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: "Error fetching user", error });
   }
 };
 
-// ✅ Get all users (admin only)
 const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password");
-
-    const decryptedUsers = users.map((user) => {
-      const userObj = user.toObject();
-      userObj.phone = decrypt(userObj.phone);
-      userObj.address = decrypt(userObj.address);
-      return userObj;
-    });
-
-    res.status(200).json({
-      success: true,
-      data: decryptedUsers,
-    });
+    const users = await User.find();
+    res.status(200).json(users);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve users",
-      error,
-    });
+    res.status(500).json({ message: "Error fetching users", error });
   }
 };
 
-// ✅ Update user role (admin only)
 const updateUserRole = async (req, res) => {
   try {
-    const { id } = req.params;
     const { role } = req.body;
-
-    if (!["user", "admin"].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid role provided",
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      id,
-      { role },
-      { new: true, runValidators: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "User role updated successfully",
-      data: user,
-    });
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json({ message: "User role updated", user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update user role",
-      error,
-    });
+    res.status(500).json({ message: "Error updating user role", error });
   }
 };
 
-// ✅ Delete user (admin only)
 const deleteUser = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const user = await User.findByIdAndDelete(id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "User deleted successfully",
-    });
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete user",
-      error,
-    });
+    res.status(500).json({ message: "Error deleting user", error });
   }
 };
 
-// ✅ Forgot Password - send reset link
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User with this email does not exist",
-      });
-    }
-
-    const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "15m",
-    });
-
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+    const otpCode = generateOtp();
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    user.otp = { code: otpCode, expiresAt: otpExpiry };
     await user.save();
 
     const transporter = nodemailer.createTransport({
@@ -350,154 +255,73 @@ const forgotPassword = async (req, res) => {
       },
     });
 
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
-      subject: "Password Reset Request",
-      html: `
-        <h1>You requested a password reset</h1>
-        <p>Click this link to reset your password:</p>
-        <a href="${resetUrl}" clicktracking=off>${resetUrl}</a>
-        <p>This link will expire in 15 minutes.</p>
-        <p>If you didn't request this, please ignore this email.</p>
-      `,
+      subject: "Password Reset OTP - Lets Go",
+      html: `<p>Your password reset OTP is: <b>${otpCode}</b>. It will expire in 5 minutes.</p>`
     });
 
-    res.status(200).json({
-      success: true,
-      message: "Password reset link sent to email",
-    });
+    res.status(200).json({ message: "OTP sent to your email for password reset" });
   } catch (error) {
-    console.error("Forgot password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error sending reset email",
-    });
+    res.status(500).json({ message: "Error processing forgot password", error });
   }
 };
 
-// ✅ Reset Password
 const resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findOne({
-      _id: decoded.id,
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired reset token",
-      });
+    if (!user.otp || user.otp.code !== otp || user.otp.expiresAt < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    const passwordValidation = validatePassword(newPassword);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ message: passwordValidation.message });
-    }
-
-    const reused = await isPasswordReused(newPassword, user.passwordHistory);
-    if (reused) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot reuse a recent password.",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    user.passwordHistory.unshift(user.password);
-    if (user.passwordHistory.length > 5) {
-      user.passwordHistory.pop();
-    }
-
-    user.password = hashedPassword;
-    user.passwordChangedAt = new Date();
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.otp = undefined;
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Password reset successful",
-    });
+    res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
-    console.error("Reset password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error resetting password",
-    });
+    res.status(500).json({ message: "Error resetting password", error });
   }
 };
 
-// ✅ Update user profile
+const uploadImage = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.image = req.file.filename;
+    await user.save();
+    res.status(200).json({ message: "Image uploaded successfully", image: req.file.filename });
+  } catch (error) {
+    res.status(500).json({ message: "Error uploading image", error });
+  }
+};
+
 const updateUserProfile = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, email, phone, address } = req.body;
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (req.user.id !== id && req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to update this profile",
-      });
-    }
-
-    const encryptedPhone = phone ? encrypt(phone) : user.phone;
-    const encryptedAddress = address ? encrypt(address) : user.address;
-
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
-      {
-        name: name || user.name,
-        email: email || user.email,
-        phone: encryptedPhone,
-        address: encryptedAddress,
-      },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    const userObj = updatedUser.toObject();
-    userObj.phone = decrypt(userObj.phone);
-    userObj.address = decrypt(userObj.address);
-
-    res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      data: userObj,
-    });
+    const updates = req.body;
+    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json({ message: "Profile updated successfully", user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update profile",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Error updating profile", error });
   }
 };
 
 module.exports = {
   signUp,
   signIn,
-  uploadImage,
   getUserById,
   getAllUsers,
   updateUserRole,
   deleteUser,
   forgotPassword,
   resetPassword,
+  uploadImage,
   updateUserProfile,
+  verifyOtp,
 };
