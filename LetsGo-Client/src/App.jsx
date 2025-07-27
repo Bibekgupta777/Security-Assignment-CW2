@@ -6,7 +6,7 @@ import { UserProvider } from "./context/UserContext";
 import { authActions } from "./store/auth";
 import AdminContactMessages from "./core/private/components/AdminContactMessages";
 
-// Lazy-loaded components
+// ✅ Lazy-loaded components
 const Home = lazy(() => import("./core/public/home/Home"));
 const LoginPage = lazy(() => import("./core/public/auth/LoginPage"));
 const RegisterPage = lazy(() => import("./core/public/auth/RegisterPage"));
@@ -23,7 +23,9 @@ const SeatSelection = lazy(() =>
   import("./core/public/seatSelection/SeatSelection")
 );
 const UserProfile = lazy(() => import("./core/public/userProfile/UserProfile"));
+const VerifyOtp = lazy(() => import("./core/public/auth/VerifyOtp")); // ✅ NEW
 
+// Admin private components
 const AdminDashboard = lazy(() => import("./core/private/dashboard"));
 const BusManagement = lazy(() => import("./core/private/busManagement"));
 const RouteManagement = lazy(() => import("./core/private/routeManagement"));
@@ -67,13 +69,10 @@ function App() {
     <Suspense fallback={<LoadingScreen />}>
       <UserProvider>
         <Routes>
-          {/* Public Routes */}
+          {/* ✅ Public Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/seat-selection" element={<SeatSelection />} />
-          <Route
-            path="/booking-confirmation"
-            element={<BookingConfirmation />}
-          />
+          <Route path="/booking-confirmation" element={<BookingConfirmation />} />
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/destinations" element={<Destinations />} />
           <Route path="/contact" element={<ContactUs />} />
@@ -87,26 +86,21 @@ function App() {
             path="/signup"
             element={isAuthenticated ? <Navigate to="/" /> : <RegisterPage />}
           />
+          <Route
+            path="/verify-otp"
+            element={isAuthenticated ? <Navigate to="/" /> : <VerifyOtp />} // ✅ NEW ROUTE
+          />
 
-          {/* Private Routes - Only accessible if authenticated and role is 'admin' */}
+          {/* ✅ Private Routes - Only accessible if authenticated and role is 'admin' */}
           {isAuthenticated && role === "admin" ? (
             <Route path="/admin" element={<Layout />}>
               <Route index element={<Navigate to="dashboard" />} />
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="bus-management" element={<BusManagement />} />
               <Route path="route-management" element={<RouteManagement />} />
-              <Route
-                path="schedule-management"
-                element={<ScheduleManagement />}
-              />
-              <Route
-                path="booking-management"
-                element={<BookingManagement />}
-              />
-              <Route
-                path="payment-management"
-                element={<PaymentManagement />}
-              />
+              <Route path="schedule-management" element={<ScheduleManagement />} />
+              <Route path="booking-management" element={<BookingManagement />} />
+              <Route path="payment-management" element={<PaymentManagement />} />
               <Route path="user-management" element={<UserManagement />} />
               <Route path="contact-messages" element={<AdminContactMessages />} />
             </Route>
