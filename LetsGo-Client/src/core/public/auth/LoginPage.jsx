@@ -1,3 +1,7 @@
+// ============================================================================
+// 2. Updated LoginPage.jsx - Simplified
+// ============================================================================
+
 import React, { useState } from "react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useForm } from "react-hook-form";
@@ -34,15 +38,21 @@ const LoginPage = () => {
 
   const submit = async (data) => {
     try {
-      const res = await login(data); // API call
-      if (res.success) {
+      const res = await login(data);
+      
+      if (res.success && res.requiresOTP) {
+        // OTP was sent, navigate to verification page
         toast.success("OTP sent to your email!");
-        // Navigate to OTP page with email as state
         navigate("/verify-otp", { state: { email: data.email } });
+      } else if (res.success && res.directLogin) {
+        // Direct login successful (handled in useLogin hook)
+        // No additional action needed
       } else {
-        toast.error(res.message || "Login failed");
+        // Login failed
+        toast.error(res.message || "Too many attempts, please try again later.");
       }
     } catch (error) {
+      console.error("Login error:", error);
       toast.error("Something went wrong!");
     }
   };
