@@ -15,7 +15,7 @@ function classNames(...classes) {
 }
 
 export default function Navbar() {
-  const { userInfo } = useContext(UserContext);
+  const { userInfo, isAuthenticated, authInitialized, loading } = useContext(UserContext);
   const location = useLocation();
 
   const navigation = [
@@ -36,6 +36,28 @@ export default function Navbar() {
       searchSection.scrollIntoView({ behavior: "smooth" });
     }
   };
+
+  // Show loading state until auth is initialized
+  if (!authInitialized || loading) {
+    return (
+      <Disclosure as="nav" className="">
+        <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
+          <div className="relative flex h-16 items-center justify-between">
+            <div className="sm:flex hidden shrink-0 items-center">
+              <a href="/">
+                <img
+                  alt="LetsGo Logo"
+                  src={LetsGoLogo}
+                  className="h-12 w-auto"
+                />
+              </a>
+            </div>
+            <div className="animate-pulse bg-gray-200 h-8 w-20 rounded"></div>
+          </div>
+        </div>
+      </Disclosure>
+    );
+  }
 
   return (
     <Disclosure as="nav" className="">
@@ -96,7 +118,8 @@ export default function Navbar() {
                   </div>
                 </div>
               </div>
-              <UserMenu userInfo={userInfo} />
+              {/* Pass both userInfo and isAuthenticated to UserMenu */}
+              <UserMenu userInfo={isAuthenticated ? userInfo : null} isAuthenticated={isAuthenticated} />
             </div>
           </div>
 
