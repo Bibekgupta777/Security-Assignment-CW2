@@ -1,12 +1,21 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useLocation, useNavigate } from "react-router-dom";
+import { UserContext } from "../../../context/UserContext"; // Most common path
 
 const SeatSelection = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const schedule = location.state?.schedule;
+
+  // Use UserContext to get authentication data
+  const { 
+    isAuthenticated, 
+    getCurrentToken, 
+    getCurrentUserId, 
+    authInitialized 
+  } = useContext(UserContext);
 
   const [seatLayout, setSeatLayout] = useState([]);
   const [bookedSeats, setBookedSeats] = useState([]);
@@ -60,14 +69,29 @@ const SeatSelection = () => {
       return;
     }
 
+    // Check if authentication is initialized and user is authenticated
+    if (!authInitialized) {
+      toast.error("Authentication is loading. Please wait.");
+      return;
+    }
+
+    if (!isAuthenticated) {
+      toast.error("You must be logged in to make a booking.");
+      navigate("/login");
+      return;
+    }
+
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        toast.error("You must be logged in to make a booking.");
+      // Use the helper functions from UserContext
+      const token = getCurrentToken();
+      const userId = getCurrentUserId();
+
+      if (!token || !userId) {
+        toast.error("Authentication error. Please log in again.");
+        navigate("/login");
         return;
       }
 
-      const userId = localStorage.getItem("id");
       const payload = {
         user_id: userId,
         schedule_id: schedule._id,
@@ -76,23 +100,44 @@ const SeatSelection = () => {
 
       const response = await axios.post("/api/booking/create", payload, {
         headers: { Authorization: `Bearer ${token}` },
+        withCredentials: true, // Add this for cookie support
       });
 
       if (response.data.success) {
         setBookingStatus("Booking successful!");
+        toast.success("Booking successful!");
         navigate("/booking-confirmation", { state: { booking: response.data.data } });
       } else {
         setBookingStatus("Booking failed. Please try again.");
+        toast.error("Booking failed. Please try again.");
       }
     } catch (error) {
       console.error("Error during booking:", error.message);
+      
+      // Handle authentication errors
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        toast.error("Session expired. Please log in again.");
+        navigate("/login");
+      } else {
+        toast.error("Booking failed. Please try again.");
+      }
+      
       setBookingStatus("Booking failed. Please try again.");
     }
   };
 
   const totalPrice = selectedSeats.length * seatPrice;
 
-  if (loading) return <div className="p-6 text-center text-sm font-medium">Loading seats...</div>;
+  // Show loading while authentication is initializing
+  if (!authInitialized || loading) {
+    return <div className="p-6 text-center text-sm font-medium">Loading...</div>;
+  }
+
+  // Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    navigate("/login");
+    return null;
+  }
 
   return (
     <div className="flex flex-col md:flex-row justify-center items-start px-8 py-12 min-h-screen">
