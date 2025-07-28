@@ -1,23 +1,27 @@
 // ============================================================================
-// ✅ Updated useLogin Hook (hooks/useLogin.js) with Remaining Time for 429
+// ✅ Updated useLogin Hook (hooks/useLogin.js) with Cookies Support
 // ============================================================================
 
-import { useState } from "react";
+import { useState, useContext } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { authActions } from "../store/auth";
+import { UserContext } from "../context/UserContext";
 
 const useLogin = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { setUserData, setCookie } = useContext(UserContext);
 
   const login = async (data) => {
     setLoading(true);
     try {
-      const response = await axios.post("/api/user/sign-in", data);
+      const response = await axios.post("/api/user/sign-in", data, {
+        withCredentials: true, // Enable cookies
+      });
 
       console.log("Login response:", response.data);
 
@@ -32,12 +36,8 @@ const useLogin = () => {
 
       // ✅ Direct login flow
       if (response.data.user && response.data.user.token) {
-        dispatch(authActions.login());
-        dispatch(authActions.changeRole(response.data.user.role));
-
-        localStorage.setItem("id", response.data.user.id);
-        localStorage.setItem("token", response.data.user.token);
-
+        // Use the context function to set user data in cookies
+        setUserData(response.data.user);
 
         toast.success("✅ Login successful!");
 
@@ -93,13 +93,11 @@ const useLogin = () => {
   // ✅ Handle successful OTP verification
   const handleOTPSuccess = (userData) => {
     try {
-      dispatch(authActions.login());
-      dispatch(authActions.changeRole(userData.role));
+      // Use the context function to set user data in cookies
+      setUserData(userData);
 
-      localStorage.setItem("id", userData.id || userData._id);
-      localStorage.setItem("token", userData.token);
-      localStorage.setItem("role", userData.role);
-      localStorage.setItem("user", JSON.stringify(userData));
+      // Also set individual cookies for backward compatibility
+      setCookie("user", JSON.stringify(userData));
 
       toast.success("✅ Login successful!");
 
