@@ -1,4 +1,4 @@
-import Navbar from "@/components/Navbar"; // Navbar import added
+import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -23,12 +23,12 @@ import {
   Phone,
   Edit,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { UserContext } from "../../../context/UserContext"; // Try this path first
 
 const LOCAL_STORAGE_USER_KEY = "profile-edited-user";
 const REQUIRED_FIELDS = ["name", "email"];
 const PROFILE_SAVE_MESSAGE = "Profile updated and saved locally!";
-
 
 const UserProfile = () => {
   const [user, setUser] = useState(null);
@@ -52,58 +52,82 @@ const UserProfile = () => {
   const [editError, setEditError] = useState(null);
   const [editSuccess, setEditSuccess] = useState(null);
 
-  const token = localStorage.getItem("token");
-  const userId = localStorage.getItem("id");
+  // Use UserContext for cookie-based authentication
+  const { getCurrentUserId, getCurrentToken } = useContext(UserContext);
 
   useEffect(() => {
     const fetchUserData = async () => {
+      const token = getCurrentToken();
+      const userId = getCurrentUserId();
+
+      if (!userId || !token) {
+        setError("Authentication required. Please login again.");
+        setLoading(false);
+        return;
+      }
+
       try {
         const [userResponse, bookingsResponse] = await Promise.all([
           axios.get(`/api/user/get-user-by-id/${userId}`, {
             headers: { Authorization: `Bearer ${token}` },
+            withCredentials: true, // Include cookies
           }),
           axios.get(`/api/booking/user/${userId}`, {
             headers: { Authorization: `Bearer ${token}` },
+            withCredentials: true, // Include cookies
           }),
         ]);
 
         // Original user from API
         const apiUser = userResponse.data;
 
-        // Try to get locally saved edits
+        // Try to get locally saved edits (keeping localStorage for profile edits only)
         const savedUserJson = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
         const savedUser = savedUserJson ? JSON.parse(savedUserJson) : null;
 
         // Merge saved edits on top of API user data
-        const mergedUser = savedUser
-          ? { ...apiUser, ...savedUser }
-          : apiUser;
+        const mergedUser = savedUser ? { ...apiUser, ...savedUser } : apiUser;
 
         setUser(mergedUser);
         setBookings(bookingsResponse.data.data);
         setLoading(false);
       } catch (error) {
-        setError("Failed to fetch user data");
+        console.error("Error fetching user data:", error);
+        if (error.response?.status === 401) {
+          setError("Session expired. Please login again.");
+        } else {
+          setError("Failed to fetch user data");
+        }
         setLoading(false);
       }
     };
 
     fetchUserData();
-  }, [userId, token]);
+  }, [getCurrentUserId, getCurrentToken]);
 
   const handleCancelBooking = async () => {
+    const token = getCurrentToken();
+    const userId = getCurrentUserId();
+
+    if (!token || !userId) {
+      setError("Authentication required. Please login again.");
+      return;
+    }
+
     try {
       const response = await axios.put(
         `/api/booking/${selectedBooking._id}/cancel`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true, // Include cookies
         }
       );
       if (response.data.success) {
         setIsCancelModalOpen(false);
         const bookingsResponse = await axios.get(`/api/booking/user/${userId}`, {
           headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true, // Include cookies
         });
         setBookings(bookingsResponse.data.data);
       }
@@ -112,18 +136,17 @@ const UserProfile = () => {
     }
   };
 
- const statusStyles = {
-  confirmed: "bg-green-100 text-green-800",
-  pending: "bg-yellow-100 text-yellow-800",
-  cancelled: "bg-red-100 text-red-800",
-  default: "bg-gray-100 text-gray-800",
-};
+  const statusStyles = {
+    confirmed: "bg-green-100 text-green-800",
+    pending: "bg-yellow-100 text-yellow-800",
+    cancelled: "bg-red-100 text-red-800",
+    default: "bg-gray-100 text-gray-800",
+  };
 
-const getStatusBadgeClass = (status) => {
-  const base = "px-3 py-1 rounded-full text-sm";
-  return `${statusStyles[status.toLowerCase()] || statusStyles.default} ${base}`;
-};
-
+  const getStatusBadgeClass = (status) => {
+    const base = "px-3 py-1 rounded-full text-sm";
+    return `${statusStyles[status.toLowerCase()] || statusStyles.default} ${base}`;
+  };
 
   // Filter bookings based on active tab
   const filteredBookings = bookings.filter((booking) => {
@@ -160,8 +183,7 @@ const getStatusBadgeClass = (status) => {
     setEditSuccess(null);
 
     if (REQUIRED_FIELDS.some((field) => !editForm[field].trim())) {
-  setEditError("Name and Email are required.");
-
+      setEditError("Name and Email are required.");
       setEditLoading(false);
       return;
     }
@@ -344,16 +366,16 @@ const getStatusBadgeClass = (status) => {
                         <div className="flex gap-2 lg:flex-col justify-end">
                           <Button
                             variant="outline"
-                                size="sm"
-                                  title="View more information"
-                                      onClick={() => {
+                            size="sm"
+                            title="View more information"
+                            onClick={() => {
                               setSelectedBooking(booking);
-                                    setIsDetailsModalOpen(true);
-                                         }}
-                                              >
-                                         <Eye className="w-4 h-4 mr-2" />
-                                           View Details
-                                            </Button>
+                              setIsDetailsModalOpen(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Details
+                          </Button>
 
                           {booking.booking_status !== "cancelled" && (
                             <Button
