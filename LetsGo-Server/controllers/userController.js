@@ -12,12 +12,98 @@ const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
+// Password validation function
+const validatePassword = (password) => {
+  const errors = [];
+  
+  // Check minimum length
+  if (password.length < 8) {
+    errors.push("Password must be at least 8 characters long");
+  }
+  
+  // Check maximum length
+  if (password.length > 128) {
+    errors.push("Password must not exceed 128 characters");
+  }
+  
+  // Check for uppercase letter
+  if (!/[A-Z]/.test(password)) {
+    errors.push("Password must contain at least one uppercase letter");
+  }
+  
+  // Check for lowercase letter
+  if (!/[a-z]/.test(password)) {
+    errors.push("Password must contain at least one lowercase letter");
+  }
+  
+  // Check for number
+  if (!/\d/.test(password)) {
+    errors.push("Password must contain at least one number");
+  }
+  
+  // Check for special character
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)");
+  }
+  
+  // Check for common weak passwords
+  const commonPasswords = [
+    "password", "123456", "123456789", "qwerty", "abc123", 
+    "password123", "admin", "letmein", "welcome", "monkey"
+  ];
+  
+  if (commonPasswords.includes(password.toLowerCase())) {
+    errors.push("Password is too common. Please choose a stronger password");
+  }
+  
+  // Check for sequential characters
+  if (/123456|abcdef|qwerty/i.test(password)) {
+    errors.push("Password should not contain sequential characters");
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors: errors
+  };
+};
+
 const signUp = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+    
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        message: "All fields are required",
+        errors: ["Name, email, and password are required"] 
+      });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        message: "Invalid email format",
+        errors: ["Please provide a valid email address"] 
+      });
+    }
+    
+    // Validate password
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ 
+        message: "Password validation failed",
+        errors: passwordValidation.errors 
+      });
+    }
+    
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({ 
+        message: "User already exists",
+        errors: ["An account with this email already exists"] 
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -32,7 +118,11 @@ const signUp = async (req, res) => {
 
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Error signing up user", error });
+    console.error("Sign up error:", error);
+    res.status(500).json({ 
+      message: "Error signing up user", 
+      errors: ["Internal server error. Please try again later."] 
+    });
   }
 };
 
@@ -276,6 +366,15 @@ const resetPassword = async (req, res) => {
 
     if (!user.otp || user.otp.code !== otp || user.otp.expiresAt < Date.now()) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // Validate new password
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ 
+        message: "Password validation failed",
+        errors: passwordValidation.errors 
+      });
     }
 
     user.password = await bcrypt.hash(newPassword, 10);

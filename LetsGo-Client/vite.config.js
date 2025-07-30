@@ -13,8 +13,8 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "https://localhost:5443", // your backend HTTPS URL and port
-        secure: false, // because using self-signed certs
+        target: "https://localhost:5443", 
+        secure: false,
       },
     },
   },

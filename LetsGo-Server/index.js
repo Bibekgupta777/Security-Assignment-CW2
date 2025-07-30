@@ -33,15 +33,15 @@ const SSL_PORT = process.env.SSL_PORT || 5443; // HTTPS port
 app.use(helmet());
 app.use(
   cors({
-    origin: "https://localhost:4004", // frontend origin
-    credentials: true, // allow cookies to be sent
+    origin: "https://localhost:4004", 
+    credentials: true, 
   })
 );
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.set("trust proxy", 1);
 
-// ✅ Secure Session Management
+
 app.use(
   session({
     name: "sid",
@@ -51,25 +51,24 @@ app.use(
     store: MongoStore.create({
       mongoUrl: process.env.MONGO_DB_URI,
       collectionName: "sessions",
-      ttl: 60 * 30, // 30 min session expiration in DB
+      ttl: 60 * 30, 
     }),
     cookie: {
       httpOnly: true,
-      secure: true,             // must be true with sameSite: 'none' and HTTPS
-      maxAge: 30 * 60 * 1000,  // 30 minutes
-      sameSite: "none",        // allow cross-site cookie
+      secure: true,
+      maxAge: 30 * 60 * 1000,
       path: "/",
     },
-    rolling: true, // Refresh cookie expiration on every request
+    rolling: true, 
   })
 );
 
-// ✅ Automatic Session Expiration Middleware
+
 app.use((req, res, next) => {
   if (!req.session) return next();
 
   const now = Date.now();
-  const maxIdleTime = 30 * 60 * 1000; // 30 min idle timeout
+  const maxIdleTime = 30 * 60 * 1000; 
 
   if (!req.session.lastActivity) {
     req.session.lastActivity = now;
